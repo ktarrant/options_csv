@@ -2,33 +2,34 @@ import pandas as pd
 import pickle
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
-import argparse
 from collections import OrderedDict
 import logging
+
+
+# Make a string clean for use a as a filename
+clean_filename = lambda s: "".join([c for c in s if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+# Common helper for creating a data header
+data_header = lambda prefix, header: prefix + "_" + header
 
 log = logging.getLogger(__name__)
 
 def load_symbol(symbol):
-    url = "http://www.marketwatch.com/investing/index/{}/options".format(symbol)
+    """ Loads the options chain for the index with the given symbol """
+    url = "http://www.marketwatch.com/investing/index/{}/options".format(symbol.lower())
     log.debug("Loading webpage: {}".format(url))
     with urlopen(url) as urlobj:
         soup = BeautifulSoup(urlobj.read(), "lxml")
     return soup
 
-def pack_columns(cols, headers, prefix):
-    prefixed_headers = [prefix + "_" + header for header in headers]
-    if len(cols) < len(headers):
-        cols += [None] * (len(headers) - len(cols))
-    cols = cols[:len(headers)]
-    return [(header, col) for header, col in zip(prefixed_headers, cols)]
-
 def _checkItemWasFound(item_to_check, item_name, parent_name="webpage"):
+    """ Checks if item_to_check is None, and if it is then throws an Exception. """
     if item_to_check is None:
         raise Exception("Failed to find item '{}' in '{}'".format(item_name, parent_name))
     else:
         log.debug("Found item '{}' in '{}'".format(item_name, parent_name))
 
 def parse_options(soup, keep_clean=True):
+    """ Parses the given marketwatch soup for an options table """
     # Helper lambda functions
     text_clean = lambda s: s.strip().replace(",","")
     unpack_cols = lambda cols: [ text_clean(td.text) for td in cols ]
@@ -46,42 +47,57 @@ def parse_options(soup, keep_clean=True):
     header_half_len = int(len(headers)/2)
     strike_header = headers[header_half_len]
     main_headers = headers[:header_half_len]
+    option_order = ["call", "put"]
+    data_headers = lambda option_type: [data_header(option_type, header) for header in main_headers]
     log.debug("Found main headers: {}".format(main_headers))
+    log.info("Using data headers: {}".format(data_headers))
 
     # Now process all of the rows and extract the pricing information from them
     rows = options.findAll('tr', {'class': 'chainrow'})
     log.debug("Found {} rows in options table.".format(len(rows)))
     calls_are_itm = True
     current_expiration = None
-    expiration_label = None
+    data_columns = [header for option_type in option_order for header in data_headers(option_type)]
+    current_table = pd.DataFrame(columns=(data_columns))
     for row in rows:
         if "heading" in row["class"] and "Expires" in row.text:
-            if current_expiration is None:
-                current_expiration = row.text.strip()
-                expiration_label = current_expiration.replace("Expires ", "")
-                log.debug("Current expiration: {}".format(expiration_label))
-            if row.text.strip() != current_expiration:
-                # TODO: Support extracting all expirations, not just the front one!
-                break
+            # Extract the expiration date
+            this_expiration = row.text.strip().replace("Expires ", "")
+
+            if current_expiration is not None and this_expiration != current_expiration:
+                # We need to close the old file and start a new one
+                out_file = clean_filename(current_expiration) + ".csv"
+                current_table.to_csv(out_file)
+                log.debug("Finshed expiration '{}'; Saved to: {}".format(
+                    current_expiration, out_file))
+                exit()
+
+            log.info("Starting new expiration: {}".format(this_expiration))
+            current_expiration = this_expiration
+            
 
         elif "aright" in row['class']:
             # this is a row containing option data. get the strike column first.
             strike_col = text_clean(row.find('td', {'class': 'strike-col'}).text)
             log.debug("Processing row with strike: {}".format(strike_col))
 
-            results = OrderedDict([(strike_header, strike_col)])
+            results = OrderedDict() # [(strike_header, strike_col)])
 
             # add a prefix as a call or put depending on whether we know (by tracking our progress)
             # whether calls are itm yet or not
-            prefix_order = ["call", "put"]
             extract_order = ["inthemoney", ""] if calls_are_itm else ["", "inthemoney"]
-            for prefix, extract in zip(prefix_order, extract_order):
+            for option_type, extract in zip(option_order, extract_order):
                 cols = unpack_cols(row.findAll('td', {'class': extract}))
-                results.update(pack_columns(cols, main_headers, prefix))
+                if len(cols) < len(main_headers):
+                    cols += [None] * (len(headers) - len(cols))
+                cols = cols[:len(headers)]
+                entry = [(header, col) for header, col in zip(data_headers(option_type), cols)]
+                results.update(entry)
 
-            # yield a dictionary of this row
-            log.debug("Processed option row for strike: {}".format(strike_col))
-            yield results
+            # add this row to the running table
+            strike_value = int(strike_col.replace(",", ""))
+            log.debug("Processed option row for strike: {}".format(strike_value))
+            current_table.loc[strike_value] = results
 
         elif "stockprice" in row['class']:
             # We have reached the stock price in the table, so we know calls are no longer itm
@@ -94,10 +110,14 @@ def parse_options(soup, keep_clean=True):
 
 
 if __name__ == "__main__":
+    import os
+    import argparse
+
     parser = argparse.ArgumentParser(
         description="Parses a MarketWatch options chain into a CSV made by pandas.")
     parser.add_argument("--symbol", default="spx", help="Symbol to look up.")
-    parser.add_argument("--out", default=None, help="Output file. Default is [symbol].csv")
+    parser.add_argument("--out", default=os.getcwd(),
+        help="Output directory. Default is current dir.")
     parser.add_argument("--verbose", action="store_true", help="Print debug information")
 
     args=parser.parse_args()
@@ -109,5 +129,4 @@ if __name__ == "__main__":
     if args.out is None:
         args.out = ".".join([args.symbol, "csv"])
     soup = load_symbol(args.symbol)
-    df = pd.DataFrame(parse_options(soup))
-    df.to_csv(args.out)
+    df = parse_options(soup)

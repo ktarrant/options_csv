@@ -4,7 +4,8 @@ import plotly.plotly as py
 import plotly.graph_objs as go
 import argparse
 
-clean_text = lambda s: "".join([c for c in s if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+# Make a string clean for use a as a filename
+clean_filename = lambda s: "".join([c for c in s if c.isalpha() or c.isdigit() or c==' ']).rstrip()
 
 def make_hbar_plot(options_table, symbol, parameter):
     data = [
@@ -25,7 +26,7 @@ def make_hbar_plot(options_table, symbol, parameter):
         barmode='stack'
     )
     fig = go.Figure(data=data, layout=layout)
-    return py.plot(fig, filename=clean_text("{}_{}".format(symbol, parameter)))
+    return py.plot(fig, filename=clean_filename("{}_{}".format(symbol, parameter)))
 
 if __name__ == "__main__":
     typical_params = ["Ask", "Bid", "Change", "Last", "Open Int.", "Symbol", "Vol"]
