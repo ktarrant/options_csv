@@ -12,7 +12,7 @@ def make_hbar_plot(options_table, symbol, parameter):
         go.Bar(
             name=otype,
             x=options_table['{}_{}'.format(otype, parameter)],
-            y=options_table['Strike'],
+            y=options_table.index,
             orientation='h',
             marker={
                 "color": color,
