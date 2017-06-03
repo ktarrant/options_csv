@@ -6,6 +6,10 @@ from collections import OrderedDict
 import logging
 import datetime
 
+# Make a publicly available filename output format
+OUTPUT_FILENAME_PREFIX_FORMAT = "{date}_{ticker}"
+OUTPUT_FILENAME_SUFFIX_FORMAT = "_exp{expiration}.{extension}"
+OUTPUT_FILENAME_FORMAT = OUTPUT_FILENAME_PREFIX_FORMAT + "_" + OUTPUT_FILENAME_SUFFIX_FORMAT
 
 # Make a string clean for use a as a filename
 clean_filename = lambda s: "".join([c for c in s if c.isalpha() or c.isdigit() or c==' ']).rstrip()
@@ -15,7 +19,8 @@ data_header = lambda prefix, header: prefix + "_" + header
 def secure_filename(ticker, expiration, extension="csv"):
     today = datetime.date.today()
     clean_exp = clean_filename(expiration).replace(" ", "-")
-    return "{}_{}_exp{}.{}".format(today, ticker, clean_exp, extension)
+    return OUTPUT_FILENAME_FORMAT.format(
+        date=today, ticker=ticker, expiration=clean_exp, extension=extension)
 
 log = logging.getLogger(__name__)
 
