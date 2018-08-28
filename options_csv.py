@@ -6,6 +6,8 @@ from collections import OrderedDict
 import logging
 import datetime
 
+log = logging.getLogger(__name__)
+
 # Make a publicly available filename output format
 OUTPUT_FILENAME_PREFIX_FORMAT = "{date}_{ticker}"
 OUTPUT_FILENAME_SUFFIX_FORMAT = "_exp{expiration}.{extension}"
@@ -17,16 +19,31 @@ clean_filename = lambda s: "".join([c for c in s if c.isalpha() or c.isdigit() o
 data_header = lambda prefix, header: prefix + "_" + header
 
 def secure_filename(ticker, expiration, extension="csv"):
+    """ Create a usable filename to write an options data file
+
+    Args:
+        ticker (str): ticker symbol of the option data
+        expiration (str): expiration string
+        extension (str): filename extension
+
+    Returns:
+        str: filename to be used to save options data
+    """
     today = datetime.date.today()
     clean_exp = clean_filename(expiration).replace(" ", "-")
     return OUTPUT_FILENAME_FORMAT.format(
         date=today, ticker=ticker, expiration=clean_exp, extension=extension)
 
-log = logging.getLogger(__name__)
+def load_symbol(ticker):
+    """ Loads the options chain for the index with the given symbol
 
-def load_symbol(symbol):
-    """ Loads the options chain for the index with the given symbol """
-    url = "http://www.marketwatch.com/investing/index/{}/options".format(symbol.lower())
+    Args:
+        ticker (str): ticker symbol of the option data
+
+    Returns:
+        BeautifulSoup: soup object containing options table
+    """
+    url = "http://www.marketwatch.com/investing/index/{}/options".format(ticker.lower())
     log.info("Loading webpage: {}".format(url))
     with urlopen(url) as urlobj:
         soup = BeautifulSoup(urlobj.read(), "lxml")
@@ -39,8 +56,15 @@ def _checkItemWasFound(item_to_check, item_name, parent_name="webpage"):
     else:
         log.debug("Found item '{}' in '{}'".format(item_name, parent_name))
 
-def parse_options(soup, symbol, keep_clean=True):
-    """ Parses the given marketwatch soup for an options table """
+def parse_options(soup, symbol):
+    """ Parses the given marketwatch soup for an options table. Saves the extracted options table
+    to a file.
+
+    Args:
+        soup (BeautifulSoup): soup object containing data table
+        symbol (str): ticker symbol to use for labeling
+
+    """
     # Helper lambda functions
     text_clean = lambda s: s.strip().replace(",","")
     unpack_cols = lambda cols: [ text_clean(td.text) for td in cols ]
