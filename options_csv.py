@@ -46,7 +46,7 @@ def load_symbol(ticker):
     url = "http://www.marketwatch.com/investing/index/{}/options".format(ticker.lower())
     log.info("Loading webpage: {}".format(url))
     with urlopen(url) as urlobj:
-        soup = BeautifulSoup(urlobj.read(), "lxml")
+        soup = BeautifulSoup(urlobj.read(), "html.parser")
     return soup
 
 def _checkItemWasFound(item_to_check, item_name, parent_name="webpage"):
